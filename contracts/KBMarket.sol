@@ -2,10 +2,10 @@
 pragma solidity ^0.8.4;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 
-contract KBMarket {
+contract KBMarket is ReentrancyGuard {
     using Counters for Counters.Counter;
 
     Counters.Counter private _tokenIds;
@@ -38,14 +38,14 @@ contract KBMarket {
         address seller,
         address owner,
         uint256 price,
-        bool sold
+        bool isSold
     );
 
     function getListingPrice() public view returns (uint256) {
         return listingPrice;
     }
 
-    function mintMarketItem(
+    function makeMarketItem(
         address nftContract,
         uint256 tokenId,
         uint256 price
@@ -59,7 +59,7 @@ contract KBMarket {
         _tokenIds.increment();
         uint256 itemId = _tokenIds.current();
 
-        idToMarket[itemId] = MarketToken(
+        _idToMarketToken[itemId] = MarketToken(
             itemId,
             nftContract,
             tokenId,
@@ -82,21 +82,21 @@ contract KBMarket {
         );
     }
 
-    function createMarketItems(address nftContract, uint256 itemId)
+    function createMarketSale(address nftContract, uint256 itemId)
         public
         payable
         nonReentrant
     {
         uint256 price = _idToMarketToken[itemId].price;
-        uint256 tokenId = _idToMarketToken[itemId].tokenURI;
+        uint256 tokenId = _idToMarketToken[itemId].tokenId;
         require(
             msg.value == price,
             "Please submit the asking price in order to continue."
         );
-        _idToMarketToken[itemId].seller.trasfer(msg.value);
+        _idToMarketToken[itemId].seller.transfer(msg.value);
         IERC721(nftContract).transferFrom(address(this), msg.sender, tokenId);
         _idToMarketToken[itemId].owner = payable(msg.sender);
-        _idToMarketToken[itemId].sold = true;
+        _idToMarketToken[itemId].isSold = true;
         _tokensSold.increment();
 
         payable(owner).transfer(listingPrice);
@@ -113,7 +113,7 @@ contract KBMarket {
             if (_idToMarketToken[currentId].owner == address(0)) {
                 MarketToken storage currentItem = _idToMarketToken[currentId];
                 items[currentIndex] = currentItem;
-                currentItem += 1;
+                currentIndex += 1;
             }
         }
         return items;
@@ -129,5 +129,38 @@ contract KBMarket {
                 itemCount += 1;
             }
         }
+
+        MarketToken[] memory items = new MarketToken[](itemCount);
+        for (uint256 i = 0; i < totalItemCount; i++) {
+            uint256 currentId = _idToMarketToken[i + 1].itemId;
+
+            MarketToken storage currentItem = _idToMarketToken[currentId];
+            items[currentIndex] = currentItem;
+            currentIndex += 1;
+        }
+
+        return items;
+    }
+
+    function fetchItemsCreated() public view returns (MarketToken[] memory) {
+        uint256 totalItemCount = _tokenIds.current();
+        uint256 itemCount = 0;
+        uint256 currentIndex = 0;
+
+        for (uint256 i = 0; i < totalItemCount; i++) {
+            if (_idToMarketToken[i + 1].seller == msg.sender) {
+                itemCount += 1;
+            }
+        }
+
+        MarketToken[] memory items = new MarketToken[](itemCount);
+        for (uint256 i = 0; i < totalItemCount; i++) {
+            uint256 currentId = _idToMarketToken[i + 1].itemId;
+
+            MarketToken storage currentItem = _idToMarketToken[currentId];
+            items[currentIndex] = currentItem;
+            currentIndex += 1;
+        }
+        return items;
     }
 }
